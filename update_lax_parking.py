@@ -1,48 +1,65 @@
 import os
 import requests
-import sqlite3
 import pandas as pd
-from functions import create_endpoint
-from functions import request_endpoint
-from functions import frame_response
+import sqlite3
+from functions import make_endpoint
+from functions import query_endpoint
+from functions import check_response
 
 # %%
 # Constants
 app_token = os.environ.get("LA_PARKING_APP_TOKEN")
-data_lax_parking_lots = "https://data.lacity.org/resource/dik5-hwp6"
-headers = {"X-Auth-Token": app_token}
+headers = {"X-App-Token": app_token}
+
+# Data sources: data.lacity.org
+id_meter_policy = "s49e-q6j2"
+id_meter_occupancy = "e7h6-4a3e"
+id_lax_lots = "dik5-hwp6"
 
 # %%
-# Request LAX parking lot data and convert from JSON to a pandas DataFrame
-endpoint = create_endpoint(data_lax_parking_lots, limit=100, offset=0, format="json")
-response = request_endpoint(endpoint)
-df = frame_response(response)
+# Occupancy query
+endp_occupancy = make_endpoint(id_meter_occupancy, query=True)
+soql_occupancy = "SELECT * ORDER BY spaceid DESC"
+resp_occupancy = query_endpoint(endp_occupancy, query=soql_occupancy, page=1, limit=5000)
+json_occupancy = check_response(resp_occupancy)
 
 # %%
+# Policy queries
+pages = 3
+data_policy = []
+endp_policy = make_endpoint(id_meter_policy, query=True)
+soql_policy = "SELECT * ORDER BY spaceid DESC"
+for page in range(1, pages+1):
+    resp_policy = query_endpoint(endp_policy, query=soql_policy, page=page, limit=1000)
+    json_policy = check_response(resp_policy)
+    data_policy.append(json_policy)
 
-
-# %%
-# Database
-database = r'data/lax_parking.db'
-connection = sqlite3.connect(database)
-cursor = connection.cursor()
-sql_create_parking_lots = """
-    SELECT
-        PARKING_LOTS_NOW(
-            key_value, lotdescription)
-"""
-cursor.execute(sql_create_parking_lots)
-connection.close()
-
-# %%
-df.to_sql(name="PARKING_LOTS_NOW", con=connection, if_exists="replace")
-
-# %%
+# Not sure what to do with result
+# The individual dictionaries can be coerced into dataframe
+# Not sure how to combine properly
+data_policy[0]
 
 
 # %%
-#connection = sqlite3.connect('data\dbs\pbp.sqlite')
+# Update current occupancy in database
+#conn = sqlite3.connect("data/parking.db")
+#curs = conn.cursor()
+#curs.execute("DROP TABLE IF EXISTS meters_now;")
+#curs.execute("CREATE TABLE meters_now(spaceid, eventtime, occupancystate);")
+#curs.executemany("INSERT INTO meters_now VALUES(:spaceid, :eventtime, :occupancystate);", response_json)
+#conn.commit()
+#conn.close()
+#df.to_sql(name="meters_now", con=connection, if_exists="replace")
 
-#data_dictionary.to_sql(name='data_dictionary', con=connection, if_exists='fail')
 
-#pbp.to_sql(name=f'pbp_{yr}', con=connection, if_exists='fail')
+# %%
+# Verify current occupancy
+#conn_new = sqlite3.connect("data/parking.db")
+#curs_new = conn_new.cursor()
+#resu_new = curs_new.execute("SELECT spaceid, occupancystate, eventtime FROM meters_now ORDER BY occupancystate DESC, eventtime DESC")
+#space_id, occupancy_state, event_time = resu_new.fetchone()
+#print(f"The most recently available LADOT metered spot is {space_id} as of {event_time} UTC")
+#conn_new.close()
+
+
+
